@@ -80,8 +80,13 @@ function train!(global_params::GlobalParameters,
                 system_params_list::Vector{SystemParameters},
                 model::Flux.Chain,
                 optimizer,
+                opt_state_loaded,
                 ref_rdfs)
     opt_state = Flux.setup(optimizer, model)
+    if opt_state_loaded != nothing
+        opt_state = opt_state_loaded
+    end
+
     lr = optimizer.eta
 
     for iteration in 1:(nn_params.iterations)

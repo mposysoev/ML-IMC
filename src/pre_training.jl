@@ -202,6 +202,99 @@ function pretraining_move!(reference_data::ReferenceData,
             e_pmf2)
 end
 
+function all_prt_pt_move!(reference_data::ReferenceData,
+                          model::Flux.Chain,
+                          nn_params::NeuralNetParameters,
+                          system_params::SystemParameters,
+                          rng::Xoroshiro128Plus)
+
+    # 1. Выбираем случайный кадр из рассчитанных ранее
+    traj = read_xtc(system_params)
+    nframes = Int(size(traj)) - 1  # Пропускаем первый кадр (обычно буфер)
+    frame_id = rand(rng, 1:nframes)
+    frame = read_step(traj, frame_id)
+    box = lengths(UnitCell(frame))
+
+    # 2. Старые данные из reference_data для выбранного кадра
+    distance_matrix1 = reference_data.distance_matrices[frame_id]
+    hist1 = reference_data.histograms[frame_id]
+    pmf = reference_data.pmf
+
+    # 3. Формируем старую матрицу симметрий (symm_func_matrix1).
+    #    Если нет g3_matrices и g9_matrices, используем только g2.
+    #    Иначе объединяем (hcat) соответствующие матрицы.
+    symm_func_matrix1 = if isempty(reference_data.g3_matrices) && isempty(reference_data.g9_matrices)
+        reference_data.g2_matrices[frame_id]
+    elseif isempty(reference_data.g3_matrices)
+        hcat(reference_data.g2_matrices[frame_id],
+             reference_data.g9_matrices[frame_id])
+    elseif isempty(reference_data.g9_matrices)
+        hcat(reference_data.g2_matrices[frame_id],
+             reference_data.g3_matrices[frame_id])
+    else
+        hcat(reference_data.g2_matrices[frame_id],
+             reference_data.g3_matrices[frame_id],
+             reference_data.g9_matrices[frame_id])
+    end
+
+    # 4. Старые энергии на нейросети и по PMF
+    e_nn1_vector = init_system_energies_vector(symm_func_matrix1, model)
+    e_nn1 = sum(e_nn1_vector)
+    e_pmf1 = sum(hist1 .* pmf)
+
+    # Сохраняем координаты до смещения, чтобы потом откатить
+    old_coords = copy(positions(frame))
+
+    # 5. Генерируем случайные смещения для всех частиц
+    n_atoms = system_params.n_atoms
+    dr = system_params.max_displacement * (rand(rng, Float64, 3, n_atoms) .- 0.5)
+    # Применяем смещения (учтите, что positions(frame) может быть [3, n_atoms] или [n_atoms, 3])
+    positions(frame) .+= dr
+
+    # 6. Строим новую distance matrix
+    distance_matrix2 = build_distance_matrix(frame)
+
+    # Заново пересчитываем гистограмму distanced histogram
+    hist2 = zeros(Float64, system_params.n_bins)
+    update_distance_histogram!(distance_matrix2, hist2, system_params)
+
+    # Пересчитываем G2/G3/G9 для нового положения
+    g2_matrix2 = build_g2_matrix(distance_matrix2, nn_params)
+
+    g3_matrix2 = Matrix{Float64}[]
+    if !isempty(nn_params.g3_functions)
+        coords2 = positions(frame)
+        g3_matrix2 = build_g3_matrix(distance_matrix2, coords2, box, nn_params)
+    end
+
+    g9_matrix2 = Matrix{Float64}[]
+    if !isempty(nn_params.g9_functions)
+        coords2 = positions(frame)
+        g9_matrix2 = build_g9_matrix(distance_matrix2, coords2, box, nn_params)
+    end
+
+    # Склеиваем все в одну матрицу
+    symm_func_matrix2 = combine_symmetry_matrices(g2_matrix2, g3_matrix2, g9_matrix2)
+
+    # 7. Энергия после глобального смещения
+    e_nn2_vector = init_system_energies_vector(symm_func_matrix2, model)
+    e_nn2 = sum(e_nn2_vector)
+    e_pmf2 = sum(hist2 .* pmf)
+
+    # 8. Возвращаем систему в исходное состояние (coords)
+    positions(frame) .= old_coords
+
+    # Возвращаем значения в том же порядке, что и в pretraining_move!
+    return (symm_func_matrix1,    # старая матрица симметрий
+            symm_func_matrix2,    # новая матрица симметрий
+            e_nn2 - e_nn1,        # дельта энергии NN
+            e_pmf2 - e_pmf1,      # дельта энергии PMF
+            e_nn1,                # исходная энергия NN
+            e_pmf1,               # исходная энергия PMF
+            e_nn2,                # новая энергия NN
+            e_pmf2)
+end
+
 function log_batch_metrics(file::String, epoch, batch_iter, sys_id,
                            diff_mae, diff_mse, abs_mae, abs_mse,
                            e_nn2, e_pmf2, Δe_nn, Δe_pmf)
@@ -249,11 +342,11 @@ function training_phase!(phase_name::String,
                          rng::Xoroshiro128Plus,
                          gradient_func::Function,
                          lr_schedule::Dict{Int, Float64},
+                         lr::Float64,
                          log_file::String,
                          avg_log_file::String)
     n_systems = length(system_params_list)
     opt_state = Flux.setup(optimizer, model)
-    lr = pretrain_params.learning_rate
     for epoch in 1:steps
         should_report = (epoch % pretrain_params.output_frequency == 0) || (epoch == 1)
         accum_mse_diff = 0.0
@@ -269,10 +362,10 @@ function training_phase!(phase_name::String,
             batch_gradients = Vector{Any}(undef, n_systems)
             for sys_id in 1:n_systems
                 ref_data = ref_data_list[sys_id]
-                symm1, symm2, Δe_nn, Δe_pmf, e_nn1, e_pmf1, e_nn2, e_pmf2 = pretraining_move!(ref_data, model,
-                                                                                              nn_params,
-                                                                                              system_params_list[sys_id],
-                                                                                              rng)
+                symm1, symm2, Δe_nn, Δe_pmf, e_nn1, e_pmf1, e_nn2, e_pmf2 = all_prt_pt_move!(ref_data, model,
+                                                                                             nn_params,
+                                                                                             system_params_list[sys_id],
+                                                                                             rng)
                 if phase_name == "abs"
                     batch_gradients[sys_id] = gradient_func(e_nn2, e_pmf2, symm2, model, pretrain_params, nn_params)
                 elseif phase_name == "diff"
@@ -328,8 +421,8 @@ function training_phase!(phase_name::String,
 
         log_average_metrics(avg_log_file, epoch, mean_mae_diff, mean_mse_diff, mean_mae_abs, mean_mse_abs, mean_reg)
 
-            println(@sprintf("%s - Epoch: %4d | diff_MSE: %.6f | diff_MAE: %.6f | abs_MSE: %.6f | abs_MAE: %.6f | Reg: %.2e | LR: %.2e",
-                             phase_name, epoch, mean_mse_diff, mean_mae_diff, mean_mse_abs, mean_mae_abs, mean_reg, lr))
+        println(@sprintf("%s - Epoch: %4d | diff_MSE: %.6f | diff_MAE: %.6f | abs_MSE: %.6f | abs_MAE: %.6f | Reg: %.2e | LR: %.2e",
+                         phase_name, epoch, mean_mse_diff, mean_mae_diff, mean_mse_abs, mean_mae_abs, mean_reg, lr))
     end
 end
 
@@ -347,49 +440,60 @@ function pretrain_model!(pretrain_params::PreTrainingParameters,
                        for i in 1:n_systems]
     ref_data_list = pmap(precompute_reference_data, ref_data_inputs)
 
-    phase1_steps = pretrain_params.steps
-    do_phase_2 = false
-    phase2_steps = 1000
-    batch_size = pretrain_params.batch_size
-
-    phase1_lr_schedule = Dict(2000 => 0.001,
-                              7000 => 0.0005,
-                              18000 => 0.0001)
-
-    phase2_lr_schedule = Dict(500 => 0.0002,
-                              1000 => 0.0001,
-                              2000 => 0.00005,
-                              4500 => 0.00001)
-
     all_loss_log = "pretraining_loss.out"
     avg_loss_log = "avg_pretraining_loss.out"
 
-    training_phase!("abs", phase1_steps, batch_size,
+    abs_1_steps = 20000
+    abs_1_batch_size = 1
+    abs_1_lr_schedule = Dict(10000 => 0.005,
+                             15000 => 0.001,
+                             17000 => 0.0005)
+    lr = pretrain_params.learning_rate
+
+    training_phase!("abs", abs_1_steps, abs_1_batch_size,
                     system_params_list, ref_data_list,
                     model, nn_params, pretrain_params,
                     optimizer, rng, compute_pretraining_gradient_abs,
-                    phase1_lr_schedule, all_loss_log, avg_loss_log)
-    @save "model-phase1-stage1.bson" model
+                    abs_1_lr_schedule, lr, all_loss_log, avg_loss_log)
 
-    batch_size = 256
-    phase1_steps = 1000
-    Flux.adjust!(Flux.setup(optimizer, model), 0.00005)
+    @save "opt-pt-stage-1.bson" optimizer
+    @save "model-pt-stage-1.bson" model
     println()
-    training_phase!("abs", phase1_steps, batch_size,
+
+    # @load "model-pt-stage-1.bson" model
+    abs_2_steps = 1000
+    abs_2_batch_size = 32
+    abs_2_lr_schedule = Dict(500 => 0.0001,
+                             900 => 0.00005)
+    lr = 0.0005
+    Flux.adjust!(Flux.setup(optimizer, model), lr)
+
+    training_phase!("abs", abs_2_steps, abs_2_batch_size,
                     system_params_list, ref_data_list,
                     model, nn_params, pretrain_params,
                     optimizer, rng, compute_pretraining_gradient_abs,
-                    phase1_lr_schedule, all_loss_log, avg_loss_log)
-    @save "model-phase1-stage2.bson" model
+                    abs_2_lr_schedule, lr, all_loss_log, avg_loss_log)
 
-    if do_phase_2
-        Flux.adjust!(Flux.setup(optimizer, model), 0.00005)
-        training_phase!("diff", phase2_steps, batch_size,
-                        system_params_list, ref_data_list,
-                        model, nn_params, pretrain_params,
-                        optimizer, rng, compute_pretraining_gradient_diff,
-                        phase2_lr_schedule, all_loss_log, avg_loss_log)
-    end
+    @save "opt-pt-stage-2.bson" optimizer
+    @save "model-pt-stage-2.bson" model
+    println()
+
+    # diff_1_steps = 5000
+    # diff_1_batch_size = 256
+    # diff_1_lr_schedule = Dict(1 => 0.0002,
+    #                           2500 => 0.0001,
+    #                           4000 => 0.00005)
+    # lr = 0.0002
+    # Flux.adjust!(Flux.setup(optimizer, model), lr)
+
+    # training_phase!("diff", diff_1_steps, diff_1_batch_size,
+    #                 system_params_list, ref_data_list,
+    #                 model, nn_params, pretrain_params,
+    #                 optimizer, rng, compute_pretraining_gradient_diff,
+    #                 diff_1_lr_schedule, lr, all_loss_log, avg_loss_log)
+
+    # @save "model-pt-stage-3.bson" model
+    # println()
 
     try
         @save save_path model
