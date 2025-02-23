@@ -421,8 +421,8 @@ function training_phase!(phase_name::String,
 
         log_average_metrics(avg_log_file, epoch, mean_mae_diff, mean_mse_diff, mean_mae_abs, mean_mse_abs, mean_reg)
 
-        println(@sprintf("%s - Epoch: %4d | diff_MSE: %.6f | diff_MAE: %.6f | abs_MSE: %.6f | abs_MAE: %.6f | Reg: %.2e | LR: %.2e",
-                         phase_name, epoch, mean_mse_diff, mean_mae_diff, mean_mse_abs, mean_mae_abs, mean_reg, lr))
+        println(@sprintf("%s | Epoch: %4d | diff_MAE: %.6f | abs_MAE: %.6f | LR: %.2e",
+                         phase_name, epoch, mean_mae_diff, mean_mae_abs, lr))
     end
 end
 
@@ -443,11 +443,14 @@ function pretrain_model!(pretrain_params::PreTrainingParameters,
     all_loss_log = "pretraining_loss.out"
     avg_loss_log = "avg_pretraining_loss.out"
 
-    abs_1_steps = 20000
+    abs_1_steps = 100000
     abs_1_batch_size = 1
     abs_1_lr_schedule = Dict(10000 => 0.005,
-                             15000 => 0.001,
-                             17000 => 0.0005)
+                             30000 => 0.001,
+                             50000 => 0.0005,
+                             70000 => 0.0001,
+                             95000 => 0.00005,
+                             99000 => 0.00001)
     lr = pretrain_params.learning_rate
 
     training_phase!("abs", abs_1_steps, abs_1_batch_size,
@@ -461,22 +464,22 @@ function pretrain_model!(pretrain_params::PreTrainingParameters,
     println()
 
     # @load "model-pt-stage-1.bson" model
-    abs_2_steps = 1000
-    abs_2_batch_size = 32
-    abs_2_lr_schedule = Dict(500 => 0.0001,
-                             900 => 0.00005)
-    lr = 0.0005
-    Flux.adjust!(Flux.setup(optimizer, model), lr)
+    # abs_2_steps = 1000
+    # abs_2_batch_size = 32
+    # abs_2_lr_schedule = Dict(500 => 0.0001,
+    #                          900 => 0.00005)
+    # lr = 0.0005
+    # Flux.adjust!(Flux.setup(optimizer, model), lr)
 
-    training_phase!("abs", abs_2_steps, abs_2_batch_size,
-                    system_params_list, ref_data_list,
-                    model, nn_params, pretrain_params,
-                    optimizer, rng, compute_pretraining_gradient_abs,
-                    abs_2_lr_schedule, lr, all_loss_log, avg_loss_log)
+    # training_phase!("abs", abs_2_steps, abs_2_batch_size,
+    #                 system_params_list, ref_data_list,
+    #                 model, nn_params, pretrain_params,
+    #                 optimizer, rng, compute_pretraining_gradient_abs,
+    #                 abs_2_lr_schedule, lr, all_loss_log, avg_loss_log)
 
-    @save "opt-pt-stage-2.bson" optimizer
-    @save "model-pt-stage-2.bson" model
-    println()
+    # @save "opt-pt-stage-2.bson" optimizer
+    # @save "model-pt-stage-2.bson" model
+    # println()
 
     # diff_1_steps = 5000
     # diff_1_batch_size = 256
@@ -495,11 +498,11 @@ function pretrain_model!(pretrain_params::PreTrainingParameters,
     # @save "model-pt-stage-3.bson" model
     # println()
 
-    try
-        @save save_path model
-    catch e
-        @warn "Failed to save model to $save_path" exception=e
-    end
+    # try
+    #     @save save_path model
+    # catch e
+    #     @warn "Failed to save model to $save_path" exception=e
+    # end
 
     return model
 end

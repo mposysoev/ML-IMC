@@ -89,10 +89,22 @@ function train!(global_params::GlobalParameters,
 
     lr = optimizer.eta
 
+    lr_schedule = Dict(10 => 0.001,
+                       50 => 0.0005,
+                       100 => 0.0001,
+                       150 => 0.00005,
+                       200 => 0.00001)
+
     for iteration in 1:(nn_params.iterations)
         iter_string = lpad(iteration, 2, "0")
 
         println("\n--------------------------------- Iteration $iteration ---------------------------------\n")
+
+        # Scheduler of Learning Rate (LR Finder)
+        if haskey(lr_schedule, iteration)
+            lr = lr_schedule[iteration]
+            Flux.adjust!(opt_state, lr)
+        end
 
         # Monte Carlo sampling
         inputs = prepare_monte_carlo_inputs(global_params, mc_params, nn_params, system_params_list, model)
@@ -157,9 +169,6 @@ function train!(global_params::GlobalParameters,
         _, gradient_restructure = Flux.destructure(tmp_energy_gradients)
         mean_loss_gradients = gradient_restructure(mean_loss_gradients)
         update_model!(model, opt_state, mean_loss_gradients)
-
-        # Scheduler of Learning Rate (LR Finder)
-        # optimizer.eta *= 2.0
 
         # Run GC after each iteration
         GC.gc()

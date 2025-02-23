@@ -49,7 +49,6 @@ function main()
     end
 
     # Initialize input data and model components
-    # Initialize input data and model components
     model, optimizer, opt_state, ref_rdfs = input_init(global_params, nn_params, pretrain_params, system_params_list)
 
     println("----------------------------------- Model -------------------------------------")
@@ -64,10 +63,10 @@ function main()
         if global_params.model_file == "none"
             println("================================ Pre-Training =================================")
             model = pretrain_model!(pretrain_params, nn_params, system_params_list, model, optimizer, ref_rdfs)
-            optimizer = init_optimizer(nn_params)
+            # optimizer = init_optimizer(nn_params)
         end
-        println("================================== Training ===================================")
-        train!(global_params, mc_params, nn_params, system_params_list, model, optimizer, opt_state, ref_rdfs)
+        # println("================================== Training ===================================")
+        # train!(global_params, mc_params, nn_params, system_params_list, model, optimizer, opt_state, ref_rdfs)
     else
         length(system_params_list) == 1 || throw(ArgumentError("Simulation mode supports only one system"))
         simulate!(model, global_params, mc_params, nn_params, system_params_list[1])
