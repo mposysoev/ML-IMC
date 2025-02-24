@@ -89,11 +89,11 @@ function train!(global_params::GlobalParameters,
 
     lr = optimizer.eta
 
-    lr_schedule = Dict(10 => 0.001,
+    lr_schedule = Dict(5 => 0.0005,
                        50 => 0.0005,
-                       100 => 0.0001,
-                       150 => 0.00005,
-                       200 => 0.00001)
+                       100 => 0.00001,
+                       150 => 0.000005,
+                       200 => 0.000001)
 
     for iteration in 1:(nn_params.iterations)
         iter_string = lpad(iteration, 2, "0")
@@ -155,11 +155,8 @@ function train!(global_params::GlobalParameters,
 
         # Save model state
         @save "model-iter-$(iter_string).bson" model
-        check_file("model-iter-$(iter_string).bson")
         @save "opt-iter-$(iter_string).bson" opt_state
-        check_file("opt-iter-$(iter_string).bson")
         @save "gradients-iter-$(iter_string).bson" mean_loss_gradients
-        check_file("gradients-iter-$(iter_string).bson")
 
         # Update model with computed gradients
         tmp_symm_func_matrix::Matrix{Float64} = zeros(1,
