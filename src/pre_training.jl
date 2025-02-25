@@ -388,25 +388,23 @@ function pretrain_model!(pretrain_params::PreTrainingParameters,
                   for i in 1:length(system_params_list)]
     ref_data_list = pmap(precompute_reference_data, ref_inputs)
 
-    lr_schedule = Dict(15000 => 0.001,
+    lr_schedule = Dict(5000 => 0.001,
                        20000 => 0.0005,
-                       300000 => 0.00001,
-                       500000 => 0.00005,
-                       700000 => 0.00001,
-                       950000 => 0.00005,
-                       990000 => 0.000001)
+                       30000 => 0.00001,
+                       50000 => 0.00005,
+                       70000 => 0.00001,
+                       95000 => 0.00005,
+                       99000 => 0.000001)
 
     # lr_schedule = Dict(10 => 0.0001,
     #                    4900 => 0.00005)
 
-
-
     # @load "pt-model-1.bson" model
 
-    model, opt_state = run_training_phase!(5,        # Steps
-                                           1000,          # Batch Size
+    model, opt_state = run_training_phase!(100000,      # Steps
+                                           1,           # Batch Size
                                            false,       # Use gradient for Difference
-                                           false,        # Move all particles
+                                           true,        # Move all particles
                                            system_params_list,
                                            ref_data_list,
                                            model,
@@ -417,7 +415,7 @@ function pretrain_model!(pretrain_params::PreTrainingParameters,
                                            pretrain_params.learning_rate,
                                            log_prefix="phase1")
 
-    @save "pt-model-2.bson" model
-    @save "pt-opt-state.bson" optimizer
+    @save "pt-model-1.bson" model
+    @save "pt-opt-state-1.bson" optimizer
     return model
 end
