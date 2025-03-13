@@ -3,11 +3,11 @@
 [global]
 # Input files with system configurations
 system_files = [
-    # 10
-    #"configs/methanol-data/10CH3OH/10CH3OH-CG.toml",
+    # 20
+    "configs/methanol-data/20CH3OH/20CH3OH-CG.toml",
     # "configs/methanol-data/10CH3OH/10CH3OH-CG-2.toml",
     # 40
-    #"configs/methanol-data/40CH3OH/40CH3OH-CG.toml",
+    "configs/methanol-data/40CH3OH/40CH3OH-CG.toml",
     # "configs/methanol-data/40CH3OH/40CH3OH-CG-2.toml",
     # 60
     "configs/methanol-data/60CH3OH/60CH3OH-CG.toml",
@@ -16,7 +16,7 @@ system_files = [
     # "configs/methanol-data/70CH3OH/70CH3OH-CG.toml",
     # "configs/methanol-data/70CH3OH/70CH3OH-CG-2.toml",
     # 100
-    #"configs/methanol-data/100CH3OH/100CH3OH-CG.toml",
+    "configs/methanol-data/100CH3OH/100CH3OH-CG.toml",
     # "configs/methanol-data/100CH3OH/100CH3OH-CG-2.toml",
 ]
 
@@ -37,8 +37,8 @@ adaptive_scaling = false # true => adapt gradient scaling per system; false => u
 
 [monte_carlo]
 # Monte Carlo simulation parameters
-steps = 550000                    # Total number of MC steps to run.
-equilibration_steps = 50000       # MC steps for equilibration before data collection.
+steps = 10500000                    # Total number of MC steps to run.
+equilibration_steps = 500000       # MC steps for equilibration before data collection.
 step_adjust_frequency = 500       # Adjust max MC displacement every N steps to maintain acceptance rate.
 trajectory_output_frequency = 500 # Write system configuration to trajectory file every N steps. (Only in verbose mode)
 output_frequency = 500            # Sampling frequency for system states and energy recording.
@@ -47,7 +47,7 @@ output_frequency = 500            # Sampling frequency for system states and ene
 [neural_network]
 # Neural network architecture
 neurons = [64, 64, 64, 64, 1]   # Neurons per layer (output included). Input equals number of symmetry functions.
-bias = false                    # Whether to use bias in each layer.
+bias = true                    # Whether to use bias in each layer.
 # Activation function for each layer.
 activations = ["identity", "relu", "relu", "relu", "identity"] 
 
@@ -71,6 +71,6 @@ regularization = 0.0       # L2 regularization (0.0 = disabled) for pre-training
 
 # Pre-training optimizer settings
 optimizer = "Adam"         # Optimizer type for pre-training.
-learning_rate = 0.01       # Learning rate during pre-training.
+learning_rate = 0.00005      # Learning rate during pre-training.
 momentum = 0.9             # Momentum factor during pre-training.
 decay_rates = [0.9, 0.999] # Decay parameters for first/second moments during pre-training.
