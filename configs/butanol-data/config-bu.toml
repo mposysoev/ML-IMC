@@ -46,10 +46,10 @@ output_frequency = 500            # Sampling frequency for system states and ene
 
 [neural_network]
 # Neural network architecture
-neurons = [64, 64, 64, 1]   # Neurons per layer (output included). Input equals number of symmetry functions.
+neurons = [64, 64, 64, 64, 1]   # Neurons per layer (output included). Input equals number of symmetry functions.
 bias = true                         # Whether to use bias in each layer.
 # Activation function for each layer.
-activations = ["identity", "leakyrelu", "leakyrelu", "identity"] 
+activations = ["identity", "relu", "relu", "relu", "identity"] 
 
 
 # Training hyperparameters
@@ -71,7 +71,7 @@ regularization = 0.0       # L2 regularization (0.0 = disabled) for pre-training
 
 # Pre-training optimizer settings
 optimizer = "Adam"         # Optimizer type for pre-training.
-learning_rate = 0.01      # Learning rate during pre-training.
+learning_rate = 0.0        # Learning rate during pre-training.
 momentum = 0.9             # Momentum factor during pre-training.
 decay_rates = [0.9, 0.999] # Decay parameters for first/second moments during pre-training.
 

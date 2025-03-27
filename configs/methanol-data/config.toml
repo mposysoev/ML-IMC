@@ -3,8 +3,8 @@
 [global]
 # Input files with system configurations
 system_files = [
-    # 20
-    "configs/methanol-data/20CH3OH/20CH3OH-CG.toml",
+    # 10
+    "configs/methanol-data/10CH3OH/10CH3OH-CG.toml",
     # "configs/methanol-data/10CH3OH/10CH3OH-CG-2.toml",
     # 40
     "configs/methanol-data/40CH3OH/40CH3OH-CG.toml",
@@ -71,6 +71,6 @@ regularization = 0.0       # L2 regularization (0.0 = disabled) for pre-training
 
 # Pre-training optimizer settings
 optimizer = "Adam"         # Optimizer type for pre-training.
-learning_rate = 0.00005      # Learning rate during pre-training.
+learning_rate = 0.00000      # Learning rate during pre-training.
 momentum = 0.9             # Momentum factor during pre-training.
 decay_rates = [0.9, 0.999] # Decay parameters for first/second moments during pre-training.
